@@ -1,6 +1,6 @@
 # WUE Conditions Explorer Dashboard: Instructions for Claude Code (Stub)
 
-> **Status: stub.** This file is a skeleton that we will fill in interactively once the synthetic SCUBA data exists. Each section states what is already settled and lists the open questions marked **To decide**. Claude Code should not build the dashboard from this file until every **To decide** item has been resolved or explicitly deferred.
+> **Status: first release decided (2026-10-26).** The decisions are recorded in section 10. Items marked "adopted default" were proposed by Claude Code and accepted without objection, and they can be overruled at any time. The original **To decide** wording is kept below each item for the record.
 
 ## 1. Goal and audience
 
@@ -66,7 +66,9 @@ Every number on the dashboard must reconcile with the prepared data, and the pre
 
 ## 9. Output layout
 
-**To decide.** A tentative layout places the preparation script and its outputs under `dashboard/prep/`, the application under `dashboard/app/`, and the tests under `dashboard/tests/`, with a `dashboard/README.md` that repeats the synthetic data banner. We will confirm this once the stack is chosen.
+**Decided (2026-10-26).** The preparation script lives in `dashboard/prep/` and writes its outputs to `dashboard/app/data/`, the static application lives in `dashboard/app/`, the tests in `dashboard/tests/`, and the Cloudflare configuration in `dashboard/wrangler.jsonc`, with a `dashboard/README.md` that repeats the synthetic data banner.
+
+*Original item:* A tentative layout places the preparation script and its outputs under `dashboard/prep/`, the application under `dashboard/app/`, and the tests under `dashboard/tests/`, with a `dashboard/README.md` that repeats the synthetic data banner. We will confirm this once the stack is chosen.
 
 ## 10. Open questions log
 
@@ -74,7 +76,18 @@ We will record decisions here as we make them, with the date and a one-sentence 
 
 | Date | Decision | Rationale |
 |---|---|---|
-| | | |
+| 2026-10-26 | Styling is neutral, not Metropolitan or CaDC branded (user decision). | Brand styling on synthetic data could be mistaken for real agency results once the page is shared. |
+| 2026-10-26 | The site is public, hosted on a `workers.dev` address with Cloudflare Workers static assets (user decision). | The data is synthetic and needs no privacy review, and the free `workers.dev` subdomain avoids DNS setup. |
+| 2026-10-26 | Answer key mode ships, off by default and clearly labeled (user decision). | Comparing matched DiD estimates with the planted effect is the dataset's main teaching value, and it must never be mistaken for real-world truth. |
+| 2026-10-26 | Primary audience: conservation program managers at Metropolitan and its member agencies, then analysts testing the estimator (adopted default). | They need to read results quickly, while analysts can drill into the report. |
+| 2026-10-26 | The three questions: why residential use differs across retailers, what turf rebates saved and how sure we can be, and how the 2014 and 2015 conservation shows up in the data (adopted default). | These cover the generator's main structure and the estimator's main result. |
+| 2026-10-26 | First release has four views (overview, usage and climate, rebates and savings, data quality) plus an about page; the efficiency and supplier panels are folded into usage and climate or deferred (adopted default). | Four views answer the three questions without crowding. |
+| 2026-10-26 | Filters are one row above the content: retailer (all or one) and the answer key toggle. A date range filter is deferred (adopted default). | The panel is short (76 months) and one retailer filter scopes every view. |
+| 2026-10-26 | No map; the fictional coordinates sit near latitude 0, longitude 0, so the views stay non-spatial (adopted default). | A basemap would place the retailers in the ocean and add nothing. |
+| 2026-10-26 | Minimum cell size of 10 accounts or households, applied to the synthetic build too; household-level rows are never shown, and distributions are shown as quantiles (adopted default). | The dashboard should model the privacy habits a real-data version needs. |
+| 2026-10-26 | Prepared data is JSON at retailer-month grain, written by `dashboard/prep/prepare_data.R` with the generator's R lockfile; answer key data lives in a separate file loaded only when the mode is on (adopted default). | Small files load fast, every number traces to one script, and the answer key stays separable. |
+| 2026-10-26 | Stack: a static HTML page with Observable Plot and D3 vendored into the repository, no build step, deployed with `wrangler` from GitHub Actions (adopted default). | It needs no server, matches Workers static assets, and keeps deploys to one command. |
+| 2026-10-26 | Tests: an R reconciliation script and Playwright smoke tests (banner on every view, answer key off by default, no horizontal scroll at phone width, no console errors) run in CI before deploy (adopted default). | Playwright is available, and the checks guard the guardrails. |
 
 ## 11. Definition of done
 
