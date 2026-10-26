@@ -10,11 +10,11 @@ The dashboard lets a user explore water use efficiency conditions across the fiv
 
 ## 2. Data inputs
 
-The dashboard reads the observed tables under `synthetic_scuba/data/`, which are `usage.parquet`, `customers.csv`, `rebates.csv`, `acs_block_groups.csv`, `supplier_report.csv`, `climate_et_precip.csv` and the rate structures in `rates_owrs/`. It never edits those files. Any aggregation it needs is computed by a separate preparation step described in section 5.
+The dashboard reads the observed tables under `synthetic_scuba/data/`, which are `usage.parquet`, `customers.csv`, `rebates.csv`, `acs_block_groups.csv`, `supplier_report.csv`, `climate_et_precip.csv` and the rate structures in `rates_owrs/`. It also reads the matched difference-in-differences savings estimates under `synthetic_scuba/estimates/`, which are computed from the observed tables alone. It never edits those files. Any aggregation it needs is computed by a separate preparation step described in section 5.
 
-The `synthetic_scuba/truth/` folder holds the answer key, which includes true savings, latent attitudes and potential outcomes. A realistic dashboard would not have access to these values.
+The `synthetic_scuba/truth/` folder holds the answer key, which includes the planted savings, latent attitudes and potential outcomes. These are quantities known to the generator because it planted them, not knowledge about real households, and a realistic dashboard would not have access to them.
 
-**To decide.** We need to decide whether the dashboard ignores the truth folder entirely, or whether it offers a clearly labeled "answer key" mode that compares estimated savings with true savings for teaching and validation purposes.
+**To decide.** We need to decide whether the dashboard ignores the truth folder entirely, or whether it offers a clearly labeled "answer key" mode that compares estimated savings with planted savings for teaching and validation purposes.
 
 ## 3. Guardrails
 
@@ -32,7 +32,7 @@ The list below is a starting menu rather than a commitment. We will choose, cut 
 - An efficiency panel shows usage against the indoor and outdoor water budget, using the pre-removal efficiency measure from the paper.
 - A supplier panel shows gallons per capita per day, percent reduction relative to 2013, and enforcement counts over time.
 - A rebate panel shows uptake over time and across geography, along with turf square footage removed and rebate dollars paid.
-- A savings panel shows treated households against matched controls, and, if answer key mode is adopted, it compares estimated with true savings.
+- A savings panel shows the matched difference-in-differences estimates of turf savings, with treated households against their matched controls, and, if answer key mode is adopted, it compares those estimates with the planted effect.
 - A data quality panel shows missing rows, vacancy gaps, defaulted irrigable area and turnover, so users can see what the observation layer did.
 
 **To decide.** We need to choose the views for the first release, the default filters (retailer, zip code, customer class and date range), and whether the geography uses a synthetic map of the fictional block group grid or stays non-spatial.
