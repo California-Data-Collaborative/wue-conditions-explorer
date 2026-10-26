@@ -1,6 +1,8 @@
 # Review of claude_code_instructions_synthetic_scuba.md
 
 > **Status (2026-10-26):** The fixes below have been folded into `claude_code_instructions_synthetic_scuba.md`. Two items depend on access rather than text: A3 (reading the metadata catalogue) and the CmdStan download in A2. The instructions now tell the run how to proceed without them.
+>
+> **Network update (2026-10-26, later the same day):** A recheck found that GitHub release downloads now work, so CmdStan can be installed, and that the public catalogue repository can be cloned, although its content is a PDF rather than a schema file. CRAN still serves source packages only, because Posit Package Manager and r2u are blocked. Project Euclid and the CIMIS sites remain blocked, and the Docker daemon is still not running. The instructions have been updated to match, so A2 and A3 below describe the state before this recheck.
 
 This review flags issues in the synthetic SCUBA instructions before the first run. Issues are grouped by severity. The first group should be resolved before the run, because each one will either stop the run, cause a validation gate to fail, or force the agent to make a large judgment call silently. Section numbers refer to the instructions file.
 
