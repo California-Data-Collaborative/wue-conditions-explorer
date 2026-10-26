@@ -2,3 +2,9 @@
 work/
 build/
 *.rds
+# TEMPORARY while the anchor calibration runs: generated outputs are committed after the frozen final run.
+data/
+estimates/
+reports/
+truth/*
+!truth/README.md
