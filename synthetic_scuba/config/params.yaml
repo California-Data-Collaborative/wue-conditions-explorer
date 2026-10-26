@@ -171,16 +171,16 @@ treatment:
     value: {early_share: 0.03, early_window: ["2011-06-01", "2012-03-01"], main_share: 0.85, main_window: ["2012-04-01", "2015-04-01"], main_ramp: 2.0, late_share: 0.12, late_window: ["2015-05-01", "2016-02-01"]}
   turf_area: {value: {median: 1200, sdlog: 0.6, floor: 250, cap_frac: 0.60}, source: assumed, rationale: "Instructions: lognormal with median 1,200 sq ft, floor 250, cap at 60 percent of irrigable area."}
   payment_per_sqft: {value: 2.0, source: paper}
-  savings_target_annual_mean: {value: 22.5, source: paper, rationale: "Paper reports about 20 to 25 gal/sqft/yr; the generator calibrates the capped mean to the midpoint."}
+  savings_target_annual_mean: {value: 22.0, source: paper, rationale: "Paper reports about 20 to 25 gal/sqft/yr; the generator calibrates the capped mean to 22, which keeps the seasonal and quantile gates inside their bands."}
   savings_coefs:
     source: assumed
     rationale: "Signs follow Table 3 of the paper (more savings when inefficient, diminishing returns in log quantity and log area ratio, less in higher income areas, more when ET is high). Magnitudes are assumed. Units are gal/sqft/yr except et (gal/sqft per month per inch of ET0 anomaly)."
     value: {efficiency: 8.0, log_quantity: -4.0, log_area_ratio: -3.0, log_income: -6.0, et: 0.10}
   savings_centers: {value: {efficiency: 0.0, quantity: 1200, area_ratio: 0.25, income: 80000}, source: assumed, rationale: "Centering points for the savings regression."}
-  seasonal: {value: {amplitude: 0.19, peak_month: 8}, source: paper, rationale: "Cosine pair sized so monthly savings are near 2.6 in July to September and 1.4 in January to March (paper: about 2.7 and 1.5)."}
-  structural_skew: {value: {scale: 16.0, sdlog: 0.65}, source: assumed, rationale: "Right-skewed structural household effect, scale*(exp(sdlog*Z)-1), producing the long upper tail in Figure 3 of the paper."}
+  seasonal: {value: {amplitude: 0.22, peak_month: 8}, source: paper, rationale: "Cosine pair, together with the ET term, sized so monthly savings are near 2.55 in July to September and 1.4 in January to March (paper: about 2.7 and 1.5)."}
+  structural_skew: {value: {sd_lower: 9.5, sd_upper: 18.0}, source: assumed, rationale: "Split-normal structural household effect (gal/sqft/yr) with a wider upper side, giving the right skew of Figure 3 in the paper (median below mean). Drawn by stratified sampling within the treated cohort so the cohort reproduces the configured distribution."}
   behavioral_sd: {value: 6.0, source: assumed, rationale: "Behavioral random effect (gal/sqft/yr), redrawn on turnover."}
-  extreme_savers: {value: {share: 0.016, range: [50, 85]}, source: paper, rationale: "Paper Figure 3 shows rare extreme savers near 100 gal/sqft/yr; the share and the size of the bump are assumed."}
+  extreme_savers: {value: {share: 0.006, range: [55, 85]}, source: paper, rationale: "Paper Figure 3 shows rare extreme savers near 100 gal/sqft/yr; the share and the size of the bump are assumed. The count is exact (rounded share of the cohort)."}
   monthly_noise_sd: {value: 0.25, source: assumed, rationale: "Month-to-month noise in savings per sq ft."}
   turnover_behavioral_corr: {value: 0.5, source: assumed, rationale: "Instructions."}
   other_rebates:
