@@ -12,6 +12,8 @@
 #   s_rt       ~ N(0, sigma_shock)                                          (retailer-by-month shock)
 #   c_t        = voluntary * 1[t >= Feb 2014] + mandatory * 1[t >= Apr 2015]
 #   trend_it   = (slope_r + slope_bg) * (t - t_mid) / 12 + level_it         (level_it is a slow random walk)
+#                + attitude_trend * a_i * (t - t_mid) / 12                  (zero except in the differential trends scenario)
+#   sigma_hh and sigma_ar are multiplied by noise_scale (one except in the noise scenarios)
 # Other classes use simpler structural means (see README) and share the same error structure without a_i.
 source(file.path(dirname(sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[1])), "00_common.R"))
 suppressPackageStartupMessages(library(parallel))
@@ -75,12 +77,12 @@ hh_path <- function(i) {
   use_stream(ctx, "usage_hh", paste(x$location_id, x$tenure_index))
   n <- x$n_months
   z <- rnorm(2); e <- rnorm(n); w <- rnorm(n)
-  phi <- P("ar_phi"); s <- P("ar_sigma")
+  phi <- P("ar_phi"); s <- P("ar_sigma") * P("noise_scale")
   u <- numeric(n); u[1] <- s / sqrt(1 - phi^2) * z[2]
   if (n > 1) for (k in 2:n) u[k] <- phi * u[k - 1] + s * e[k]
   level <- cumsum(c(0, P("local_level_sd") * w[-1]))
   att <- if (x$cust_class == "SF") x$attitude else 0
-  list(eta = P("beta_attitude") * att + P("sigma_hh") * z[1], ar = u, level = level)
+  list(eta = P("beta_attitude") * att + P("sigma_hh") * P("noise_scale") * z[1], ar = u, level = level)
 }
 paths <- mclapply(seq_len(nrow(ten)), hh_path, mc.cores = ctx$opt$cores, mc.preschedule = TRUE)
 register_keys(ctx, "usage_hh", ten[, paste(location_id, tenure_index)])
@@ -96,6 +98,8 @@ vol <- P("voluntary_effect"); man <- P("mandatory_effect")
 t_vol <- month_index(ctx, vol$start); t_man <- month_index(ctx, man$start)
 pan[, conservation := vol$log_effect * (t >= t_vol) + man$log_effect * (t >= t_man)]
 pan[, trend := (slope_r + slope_bg) * (t - t_mid) / 12 + level]
+# Scenario knob (zero in the base world): conservation-minded households trend down faster without a rebate.
+pan[cust_class == "SF", trend := trend + P("attitude_trend") * attitude * (t - t_mid) / 12]
 pan[, log_error := alpha_r + alpha_bg + eta + ar + shock + conservation + trend]
 pan[, mult := exp(log_error)]
 pan[, `:=`(y_untreated = mu_struct * mult, indoor_real = indoor_struct * mult, outdoor_real = outdoor_struct * mult)]
@@ -109,12 +113,13 @@ write_table(pan, wpath(ctx, "usage_untreated.parquet"), c("location_id", "t"))
 
 # True usage parameters for the truth folder.
 truth_par <- list(usage = list(
-  sigma_retailer = P("sigma_retailer"), sigma_bg = P("sigma_bg"), sigma_hh = P("sigma_hh"),
-  beta_attitude = P("beta_attitude"), ar_phi = P("ar_phi"), ar_sigma = P("ar_sigma"), sigma_shock = P("sigma_shock"),
+  sigma_retailer = P("sigma_retailer"), sigma_bg = P("sigma_bg"), sigma_hh = P("sigma_hh") * P("noise_scale"),
+  beta_attitude = P("beta_attitude"), ar_phi = P("ar_phi"), ar_sigma = P("ar_sigma") * P("noise_scale"),
+  sigma_shock = P("sigma_shock"), attitude_trend = P("attitude_trend"), noise_scale = P("noise_scale"),
   voluntary_effect = vol$log_effect, mandatory_effect = man$log_effect,
   realized_retailer_effects = setNames(as.list(re_r$alpha_r), re_r$code),
   realized_retailer_slopes = setNames(as.list(re_r$slope_r), re_r$code)))
-write_json(truth_par, wpath(ctx, "true_params_usage.json"), auto_unbox = TRUE, digits = NA, pretty = TRUE)
+write_json(truth_par, wpath(ctx, "generator_params.json"), auto_unbox = TRUE, digits = NA, pretty = TRUE)
 write_table(re_bg, wpath(ctx, "usage_bg_effects.csv"), "block_group_id")
 
 # ---- Gates on the realized panel (occupied single family months).

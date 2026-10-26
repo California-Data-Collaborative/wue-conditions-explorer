@@ -142,6 +142,8 @@ usage:
   trend_slope_mean: {value: -0.005, source: assumed, rationale: "Slow background efficiency gain, log change per year."}
   sigma_slope_retailer: {value: 0.004, source: assumed, rationale: "Varying trend slope by retailer, per year."}
   sigma_slope_bg: {value: 0.002, source: assumed, rationale: "Varying trend slope by block group, per year."}
+  attitude_trend: {value: 0.0, source: assumed, rationale: "Extra log trend per year per unit of latent attitude for single family households. Zero in the base world; the differential trends scenario makes it negative so that conservation-minded households trend down faster without a rebate."}
+  noise_scale: {value: 1.0, source: assumed, rationale: "Multiplies the household intercept and AR(1) innovation scales. One in the base world; the noise scenarios use 1.5 and 0.67."}
   local_level_sd: {value: 0.005, source: assumed, rationale: "Monthly innovation of a slow household local level, mirroring the BSTS local trend."}
   prior_predictive_draws: {value: 40, source: assumed, rationale: "Number of prior predictive draws."}
   prior_predictive_accounts: {value: 300, source: assumed, rationale: "Single family accounts sampled for each prior predictive draw."}
@@ -161,6 +163,9 @@ usage:
       overwater_sdlog: {dist: halfnormal, scale: 0.30}
 
 treatment:
+  # PROVISIONAL: the planted savings level and spread below (savings_target_annual_mean, structural_skew scale and
+  # extreme_savers share) are recalibrated by the bounded anchor calibration once the matched DiD estimator exists,
+  # so that the estimates reproduce the paper's estimated moments. See reports/calibration_log.csv.
   selection_coefs:
     source: assumed
     rationale: "Signs follow the instructions: rebate uptake rises with income, irrigable area, pre-period inefficiency and the latent attitude. The intercept is calibrated."
@@ -178,9 +183,10 @@ treatment:
     value: {efficiency: 8.0, log_quantity: -4.0, log_area_ratio: -3.0, log_income: -6.0, et: 0.10}
   savings_centers: {value: {efficiency: 0.0, quantity: 1200, area_ratio: 0.25, income: 80000}, source: assumed, rationale: "Centering points for the savings regression."}
   seasonal: {value: {amplitude: 0.22, peak_month: 8}, source: paper, rationale: "Cosine pair, together with the ET term, sized so monthly savings are near 2.55 in July to September and 1.4 in January to March (paper: about 2.7 and 1.5)."}
-  structural_skew: {value: {sd_lower: 9.5, sd_upper: 18.0}, source: assumed, rationale: "Split-normal structural household effect (gal/sqft/yr) with a wider upper side, giving the right skew of Figure 3 in the paper (median below mean). Drawn by stratified sampling within the treated cohort so the cohort reproduces the configured distribution."}
+  structural_skew: {value: {sd_lower: 9.5, sd_upper: 18.0, scale: 1.0}, source: assumed, rationale: "Split-normal structural household effect (gal/sqft/yr) with a wider upper side, giving a planted distribution whose mean exceeds its median. Both spreads are multiplied by scale, which is the calibration knob. Drawn by stratified sampling within the treated cohort so the cohort reproduces the configured distribution."}
   behavioral_sd: {value: 6.0, source: assumed, rationale: "Behavioral random effect (gal/sqft/yr), redrawn on turnover."}
   extreme_savers: {value: {share: 0.006, range: [55, 85]}, source: paper, rationale: "Paper Figure 3 shows rare extreme savers near 100 gal/sqft/yr; the share and the size of the bump are assumed. The count is exact (rounded share of the cohort)."}
+  savings_decay_per_year: {value: 0.0, source: assumed, rationale: "Planted savings are multiplied by exp(-decay * years since installation). Zero in the base world; the decaying savings scenario uses 0.35, which halves savings between the first and the third year."}
   monthly_noise_sd: {value: 0.25, source: assumed, rationale: "Month-to-month noise in savings per sq ft."}
   turnover_behavioral_corr: {value: 0.5, source: assumed, rationale: "Instructions."}
   other_rebates:
@@ -247,3 +253,60 @@ compute:
   sbc_iter: {value: [300, 300], source: assumed, rationale: "Warmup and sampling iterations for each SBC fit (one chain)."}
   causal_bsts_iter: {value: 1000, source: assumed, rationale: "MCMC iterations per CausalImpact fit."}
   budget_minutes: {value: {refit: 60, sbc: 180, causal: 120}, source: assumed, rationale: "Instructions: about one hour for the refit and three hours for SBC on four cores."}
+
+estimation:
+  match_method: {value: corr_raw, source: paper, rationale: "Pearson correlation of raw pre-period usage within zip code, the closest to the paper; corr_deseasonalized and corr_plus_level are sensitivity runs."}
+  match_methods: {value: [corr_raw, corr_deseasonalized, corr_plus_level], source: assumed, rationale: "Methods reported in the sensitivity table."}
+  level_factor: {value: 2.0, source: assumed, rationale: "corr_plus_level requires the control's mean pre-period usage within this factor of the treated location's."}
+  control_min_coverage: {value: 0.90, source: assumed, rationale: "Controls need observed rows in at least 90 percent of the treated location's pre and post periods."}
+  headline_post_months: {value: 12, source: assumed, rationale: "The headline estimate uses the first 12 post-months, one seasonal cycle."}
+  event_bin_months: {value: 3, source: assumed, rationale: "Event study bins."}
+  newey_west_lag: {value: 3, source: assumed, rationale: "Newey-West lag in months for the household DiD; bimonthly retailers use ceiling(lag / 2) periods."}
+  interval_level: {value: 0.90, source: assumed, rationale: "Coverage is judged for 90 percent intervals."}
+  max_placebo: {value: 1000, source: assumed, rationale: "Upper limit on placebo households (distinct matched controls)."}
+
+gates:
+  planted:
+    source: assumed
+    rationale: "Relaxed planted-side tolerances. The paper's figures are estimates, so they anchor the estimated side; the planted effect only needs to be plausible."
+    value: {annual_mean: [18, 28], jas_mean: [2.0, 3.4], jfm_mean: [1.0, 2.1], share_above_60: [0.005, 0.035], share_at_or_below_zero: [0.0, 0.08]}
+  estimated:
+    source: paper
+    rationale: "Anchors are the paper's estimated moments; the widths of the bands, the interquartile tolerance and the bias limit are assumed."
+    value: {annual_mean: [20, 25], jas_mean: [2.4, 3.0], jfm_mean: [1.2, 1.8], median: [10, 24], p25: [4, 12], p75: [26, 40],
+            share_above_60: [0.005, 0.04], share_at_or_below_zero: [0.0, 0.12], max_abs_bias: 3.0}
+  seed_check:
+    source: assumed
+    rationale: "A gate passes overall when it passes in at least 15 of 20 seeds. Stage 4 robustness seeds and the held-out verification seeds are disjoint."
+    value: {n_seeds: 20, min_pass: 15, stage4_seed_start: 1001, heldout_seed_start: 2001}
+
+calibration:
+  source: assumed
+  rationale: "Bounded anchor calibration by indirect inference: at most 12 runs on the large profile over three knobs, mean first and spread second."
+  value:
+    max_runs: 12
+    knobs: [treatment/savings_target_annual_mean, treatment/structural_skew/scale, treatment/extreme_savers/share]
+    targets: {annual_mean: 22.5, median: 17.0, p25: 8.0, p75: 32.0, share_above_60: 0.02, share_at_or_below_zero: 0.06, seasonal_ratio: 1.8}
+
+scenarios:
+  source: assumed
+  rationale: "Alternative planted worlds that keep the estimator fixed. Only the base scenario is held to the estimated-side gates."
+  value:
+    differential_trends:
+      description: "Households with a stronger conservation attitude trend downward faster without a rebate, which violates parallel trends."
+      overrides: {usage/attitude_trend: -0.02}
+    decaying_savings:
+      description: "Planted savings fall by about half between the first and the third year after installation."
+      overrides: {treatment/savings_decay_per_year: 0.35}
+    concentrated_savings:
+      description: "Most households save little and a minority saves a lot (heavy-tailed planted distribution)."
+      overrides: {treatment/structural_skew: {sd_lower: 3.0, sd_upper: 32.0}, treatment/behavioral_sd: 3.0}
+    uniform_savings:
+      description: "Little heterogeneity beyond the structural regression."
+      overrides: {treatment/structural_skew: {sd_lower: 1.0, sd_upper: 1.0}, treatment/behavioral_sd: 1.0, treatment/extreme_savers: {share: 0.0}}
+    high_noise:
+      description: "Household usage error scaled by 1.5."
+      overrides: {usage/noise_scale: 1.5}
+    low_noise:
+      description: "Household usage error scaled by 0.67."
+      overrides: {usage/noise_scale: 0.67}

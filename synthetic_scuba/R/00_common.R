@@ -25,15 +25,16 @@ script_dir <- function() {
 }
 
 parse_args <- function(args = commandArgs(trailingOnly = TRUE)) {
-  opt <- list(profile = "default", cores = 1L, out = NULL, refit = FALSE, sbc = FALSE, causal = FALSE, force = FALSE)
+  opt <- list(profile = "default", cores = 1L, out = NULL, seed = NULL, refit = FALSE, sbc = FALSE, causal = FALSE,
+              scenarios = FALSE, scenario = "base", force = FALSE)
   i <- 1L
   while (i <= length(args)) {
     k <- args[i]
-    if (k %in% c("--profile", "--cores", "--out")) {
+    if (k %in% c("--profile", "--cores", "--out", "--seed", "--scenario")) {
       v <- args[i + 1L]
-      opt[[sub("^--", "", k)]] <- if (k == "--cores") as.integer(v) else v
+      opt[[sub("^--", "", k)]] <- if (k %in% c("--cores", "--seed")) as.integer(v) else v
       i <- i + 2L
-    } else if (k %in% c("--refit", "--sbc", "--causal", "--force")) {
+    } else if (k %in% c("--refit", "--sbc", "--causal", "--scenarios", "--force")) {
       opt[[sub("^--", "", k)]] <- TRUE
       i <- i + 1L
     } else stop("Unknown argument: ", k)
@@ -55,8 +56,9 @@ init_ctx <- function(stage, args = commandArgs(trailingOnly = TRUE)) {
   params <- yaml::read_yaml(file.path(root, "config", "params.yaml"))
   check_param_tags(params)
   profile <- yaml::read_yaml(file.path(root, "config", "profiles", paste0(opt$profile, ".yaml")))
+  params <- apply_scenario(params, opt$scenario)
   ctx <- list(stage = stage, opt = opt, paths = paths, params = params, profile = profile,
-              seed = params$seed$root_seed$value, t0 = Sys.time())
+              seed = if (is.null(opt$seed)) params$seed$root_seed$value else opt$seed, t0 = Sys.time())
   ctx$gates <- data.table(stage = character(), check = character(), value = character(),
                           threshold = character(), pass = logical())
   ctx$time <- time_axis(ctx)
@@ -76,6 +78,20 @@ check_param_tags <- function(p, path = "") {
     return(invisible(TRUE))
   }
   stop("Parameter without value/source node at ", path)
+}
+
+# A scenario overrides parameter values ("section/name" = value, or a nested list merged into the value).
+apply_scenario <- function(params, scenario) {
+  if (is.null(scenario) || scenario == "base") return(params)
+  sc <- params$scenarios$value[[scenario]]
+  if (is.null(sc)) stop("Unknown scenario: ", scenario)
+  for (k in names(sc$overrides)) {
+    path <- strsplit(k, "/", fixed = TRUE)[[1]]
+    node <- params[[path]]$value
+    v <- sc$overrides[[k]]
+    params[[path]]$value <- if (is.list(node) && is.list(v)) modifyList(node, v) else v
+  }
+  params
 }
 
 # pv(ctx, "usage", "ar_phi") returns the value of a tagged parameter.
@@ -182,6 +198,17 @@ gate <- function(ctx, check, pass, value, threshold, absolute = FALSE) {
                   check, fmt(value), threshold))
   ctx
 }
+
+# Share gates use a binomial rule: pass when the target band overlaps the 95 percent Clopper-Pearson interval
+# around the observed share, with n the number of households.
+share_gate <- function(ctx, check, k, n, band, absolute = FALSE) {
+  ci <- if (n > 0) binom.test(k, n)$conf.int else c(0, 1)
+  pass <- ci[2] >= band[1] && ci[1] <= band[2]
+  gate(ctx, check, pass, c(k / n, ci[1], ci[2]),
+       sprintf("band [%s, %s] overlaps 95%% binomial interval (n = %d)", band[1], band[2], n), absolute)
+}
+
+in_band <- function(x, band) x >= band[1] & x <= band[2]
 
 peak_mem_mb <- function() {
   x <- readLines("/proc/self/status")
@@ -362,13 +389,14 @@ period_missing <- function(ctx, periods, loc_plan) {
   p[, .(location_id, period_index, missing)]
 }
 
-# Months of observed data before and after a rebate post date, counted from billing periods:
-# pre periods end before the post date, post periods start after it, and months = days / 30.4375.
+# Months of observed data before and after a rebate, counted from billing periods: pre periods end before the
+# received date, post periods start on or after the post-inspection date (periods overlapping the installation
+# window are dropped), and months = days / 30.4375.
 count_pre_post_months <- function(periods_obs, rebates) {
   x <- merge(periods_obs[, .(location_id, usage_start_date, usage_end_date, days)],
-             rebates[, .(location_id, post_date)], by = "location_id", allow.cartesian = TRUE)
-  x[, .(pre_months = round(sum(days[usage_end_date < post_date]) / 30.4375),
-        post_months = round(sum(days[usage_start_date > post_date]) / 30.4375)), by = location_id]
+             rebates[, .(location_id, received_date, post_date)], by = "location_id", allow.cartesian = TRUE)
+  x[, .(pre_months = round(sum(days[usage_end_date < received_date]) / 30.4375),
+        post_months = round(sum(days[usage_start_date >= post_date]) / 30.4375)), by = location_id]
 }
 
 # ---------------------------------------------------------------------------------------------
