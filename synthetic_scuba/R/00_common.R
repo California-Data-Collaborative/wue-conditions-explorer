@@ -434,10 +434,10 @@ draw_property <- function(ctx, L, B, R, new_construction_year = NA_integer_) {
     base_ccf <- exp(log(cb[[1]]) + cb[[2]] * z[2])
   }
   meter <- switch(cls,
-    SF = if (!is.na(irr_area) && irr_area > 12000) '1"' else if (u[2] < 0.3) '5/8"' else '3/4"',
-    MF = if (units <= 4) '1"' else if (units <= 16) '1|1/2"' else '2"',
-    IRR = if (irr_area < 20000) '1|1/2"' else if (irr_area < 60000) '2"' else '3"',
-    if (base_ccf < 30) '1"' else if (base_ccf < 100) '1|1/2"' else if (base_ccf < 300) '2"' else '3"')
+    SF = if (!is.na(irr_area) && irr_area > 12000) '1' else if (u[2] < 0.3) '5/8' else '3/4',
+    MF = if (units <= 4) '1' else if (units <= 16) '1|1/2' else '2',
+    IRR = if (irr_area < 20000) '1|1/2' else if (irr_area < 60000) '2' else '3',
+    if (base_ccf < 30) '1' else if (base_ccf < 100) '1|1/2' else if (base_ccf < 300) '2' else '3')
   water_type <- if (cls == "IRR" && u[3] < pv(ctx, "classes", "irrigation_recycled_share")) "recycled" else "potable"
   list(year_built = as.integer(yb), irr_area_true = irr_area, unit_count = units, base_ccf = base_ccf,
        meter_size = meter, pressure_zone = sprintf("PZ%d", 1L + floor(u[4] * 3)),
@@ -445,4 +445,50 @@ draw_property <- function(ctx, L, B, R, new_construction_year = NA_integer_) {
        apn = sprintf("SYN-%s-%06d", L$code, as.integer(floor(u[6] * 1e6))),
        lat = B$lat_center + 0.012 * (u[7] - 0.5), lon = B$lon_center + 0.012 * (u[8] - 0.5),
        water_type = water_type, raw_u = u[3])
+}
+
+# ---------------------------------------------------------------------------------------------
+# Analysis cohort from the observed tables only (shared by 08_observation and 09_estimate_savings)
+# ---------------------------------------------------------------------------------------------
+
+# Location-level view of the observed customer table, with defaulted irrigable areas detected by bunching:
+# an area value shared by at least `min_count` single family locations in a retailer is treated as a default.
+observed_locations <- function(customers, min_count) {
+  loc <- customers[, .(utility_name = utility_name[1], cust_loc_class = cust_loc_class[1], cust_loc_zip = cust_loc_zip[1],
+                       irr_area = cust_loc_irr_area_sf[!is.na(cust_loc_irr_area_sf)][1]),
+                   by = .(location_id = location_id_from_utility)]
+  bunch <- loc[cust_loc_class == "single family residential" & !is.na(irr_area), .N, by = .(utility_name, irr_area)][N >= min_count]
+  loc[, defaulted_area := FALSE]
+  loc[bunch, on = .(utility_name, irr_area), defaulted_area := TRUE]
+  loc[]
+}
+
+# Billing frequency and cycle inferred from the observed read dates: a bimonthly location whose periods start in odd
+# months is on cycle A, even months cycle B.
+observed_cycles <- function(usage) {
+  u <- usage[, .(days = median(as.integer(usage_end_date - usage_start_date) + 1L),
+                 odd = mean(as.integer(format(usage_start_date + 15L, "%m")) %% 2 == 1)), by = .(location_id = location_id_from_utility)]
+  u[, billing := fifelse(days > 45, "bimonthly", "monthly")]
+  u[, billing_cycle := fifelse(billing == "monthly", "M", fifelse(odd >= 0.5, "A", "B"))]
+  u[, .(location_id, billing, billing_cycle)]
+}
+
+# Turf (or other) rebate events with the analysis filters: at least `pre` months before the received date, at least
+# `post` months starting on or after the post-inspection date, a single rebate record of that type, a single family
+# location and a non-defaulted irrigable area.
+analysis_cohort <- function(usage, customers, rebates, type = "turf", pre = 24, post = 12, min_count = 10) {
+  loc <- observed_locations(customers, min_count)
+  rb <- rebates[rebate_instance_type == type, .(n_records = .N, received_date = min(rebate_instance_received_date),
+                                                post_date = min(rebate_instance_post_date),
+                                                quantity = rebate_instance_quantity[1]),
+                by = .(location_id = location_id_from_utility)]
+  per <- usage[, .(location_id = location_id_from_utility, usage_start_date, usage_end_date,
+                   days = as.integer(usage_end_date - usage_start_date) + 1L)]
+  pm <- count_pre_post_months(per, rb[, .(location_id, received_date, post_date)])
+  rb <- merge(rb, pm, by = "location_id", all.x = TRUE)
+  rb[is.na(pre_months), `:=`(pre_months = 0, post_months = 0)]
+  rb <- merge(rb, loc, by = "location_id", all.x = TRUE)
+  rb[, `:=`(duplicate = n_records > 1, single_family = cust_loc_class %in% "single family residential")]
+  rb[, passes_filters := single_family & !duplicate & !(defaulted_area %in% TRUE) & pre_months >= pre & post_months >= post]
+  rb[]
 }

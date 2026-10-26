@@ -208,8 +208,8 @@ billing:
   escalation: {value: {rate: 0.04, month: 7}, source: assumed, rationale: "Rates rise 4 percent each July 1."}
   service_charge_monthly:
     source: assumed
-    rationale: "Synthetic monthly service charges by meter size (dollars), not copied from any utility. Bimonthly bills charge twice these values."
-    value: {'5/8"': 12.0, '3/4"': 14.0, '1"': 20.0, '1|1/2"': 38.0, '2"': 60.0, '3"': 120.0, '4"': 200.0}
+    rationale: "Synthetic monthly service charges by meter size in inches (dollars), not copied from any utility. Bimonthly bills charge twice these values. Meter codes follow the OWRS style without the inch mark, so CSV files need no embedded quotes."
+    value: {'5/8': 12.0, '3/4': 14.0, '1': 20.0, '1|1/2': 38.0, '2': 60.0, '3': 120.0, '4': 200.0}
   budget_prices: {value: [2.10, 2.60, 4.20, 7.50], source: assumed, rationale: "Synthetic budget tier prices per CCF in 2010; tiers start at 0, indoor budget, 100 percent and 150 percent of the total budget."}
   tiered_starts_monthly: {value: [0, 8, 20, 40], source: assumed, rationale: "Synthetic inclining block starts in CCF per month; bimonthly retailers use twice these."}
   tiered_prices: {value: {AC: [2.30, 2.90, 3.80, 5.20], VS: [1.80, 2.30, 3.00, 4.10]}, source: assumed, rationale: "Synthetic inclining block prices per CCF in 2010."}

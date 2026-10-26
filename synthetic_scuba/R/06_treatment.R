@@ -87,9 +87,18 @@ periods_obs <- merge(periods, miss, by = c("location_id", "period_index"))[missi
 pp_months <- count_pre_post_months(periods_obs, cand[, .(location_id, received_date, post_date)])
 cand <- merge(cand, pp_months, by = "location_id", all.x = TRUE)
 cand[is.na(pre_months), `:=`(pre_months = 0, post_months = 0)]
+# Defaulted areas are detected the way an analyst would, by bunching of the area on file, which can also flag a
+# home whose measured area happens to equal the default value.
+onfile <- merge(locs[cust_class == "SF", .(location_id, code, irr_area_true)],
+                plan$locations[, .(location_id, default_area, default_area_value, missing_area)], by = "location_id")
+onfile[, area_on_file := fifelse(default_area, default_area_value, irr_area_true)]
+bunch <- onfile[missing_area == FALSE, .N, by = .(code, area_on_file)][N >= pv(ctx, "observation", "bunching_min_count")]
+onfile[, area_bunched := FALSE]
+onfile[bunch, on = .(code, area_on_file), area_bunched := missing_area == FALSE]
 cand <- merge(cand, plan$locations[, .(location_id, default_area, missing_area, duplicate_turf)], by = "location_id")
+cand <- merge(cand, onfile[, .(location_id, area_bunched)], by = "location_id")
 cand[, passes_filters := pre_months >= pv(ctx, "panel", "analysis_pre_months") &
-       post_months >= pv(ctx, "panel", "analysis_post_months") & !default_area & !duplicate_turf]
+       post_months >= pv(ctx, "panel", "analysis_post_months") & !area_bunched & !duplicate_turf]
 
 # ---- Selection with the intercept calibrated exactly: a candidate is selected when b0 > c_i, so the cohort
 # size is the number of passing candidates with c_i < b0.
