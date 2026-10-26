@@ -25,12 +25,12 @@ script_dir <- function() {
 }
 
 parse_args <- function(args = commandArgs(trailingOnly = TRUE)) {
-  opt <- list(profile = "default", cores = 1L, out = NULL, seed = NULL, refit = FALSE, sbc = FALSE, causal = FALSE,
+  opt <- list(profile = "default", cores = 1L, out = NULL, seed = NULL, params = NULL, refit = FALSE, sbc = FALSE, causal = FALSE,
               scenarios = FALSE, scenario = "base", force = FALSE)
   i <- 1L
   while (i <= length(args)) {
     k <- args[i]
-    if (k %in% c("--profile", "--cores", "--out", "--seed", "--scenario")) {
+    if (k %in% c("--profile", "--cores", "--out", "--seed", "--scenario", "--params")) {
       v <- args[i + 1L]
       opt[[sub("^--", "", k)]] <- if (k %in% c("--cores", "--seed")) as.integer(v) else v
       i <- i + 2L
@@ -53,14 +53,14 @@ init_ctx <- function(stage, args = commandArgs(trailingOnly = TRUE)) {
                 reports = file.path(out, "reports"), gates = file.path(out, "reports", "gates"),
                 figures = file.path(out, "reports", "figures"))
   for (p in paths[-(1:2)]) dir.create(p, recursive = TRUE, showWarnings = FALSE)
-  params <- yaml::read_yaml(file.path(root, "config", "params.yaml"))
+  params <- yaml::read_yaml(if (is.null(opt$params)) file.path(root, "config", "params.yaml") else opt$params)
   check_param_tags(params)
   profile <- yaml::read_yaml(file.path(root, "config", "profiles", paste0(opt$profile, ".yaml")))
   params <- apply_scenario(params, opt$scenario)
   ctx <- list(stage = stage, opt = opt, paths = paths, params = params, profile = profile,
               seed = if (is.null(opt$seed)) params$seed$root_seed$value else opt$seed, t0 = Sys.time())
   ctx$gates <- data.table(stage = character(), check = character(), value = character(),
-                          threshold = character(), pass = logical())
+                          threshold = character(), pass = logical(), blocking = logical())
   ctx$time <- time_axis(ctx)
   message(sprintf("[%s] profile=%s out=%s", stage, opt$profile, out))
   ctx
@@ -186,26 +186,28 @@ wpath <- function(ctx, name) file.path(ctx$paths$work, name)
 # Gates, memory and stage wrap-up
 # ---------------------------------------------------------------------------------------------
 
-gate <- function(ctx, check, pass, value, threshold, absolute = FALSE) {
+# Non-blocking gates (blocking = FALSE) are reported as pass/fail but do not stop the pipeline; they are used for the
+# estimated-side anchors, whose misses are documented rather than tuned away after calibration.
+gate <- function(ctx, check, pass, value, threshold, absolute = FALSE, blocking = TRUE) {
   if (absolute && !isTRUE(ctx$profile$check_absolute_counts)) {
     pass <- NA
     threshold <- paste(threshold, "(skipped for this profile)")
   }
   fmt <- function(x) if (is.numeric(x)) paste(format(signif(x, 4), trim = TRUE), collapse = ", ") else paste(x, collapse = ", ")
   ctx$gates <- rbind(ctx$gates, data.table(stage = ctx$stage, check = check, value = fmt(value),
-                                           threshold = threshold, pass = as.logical(pass)))
-  message(sprintf("  gate %-4s %s: %s (%s)", if (is.na(pass)) "SKIP" else if (isTRUE(pass)) "PASS" else "FAIL",
+                                           threshold = threshold, pass = as.logical(pass), blocking = blocking))
+  message(sprintf("  gate %-4s %s: %s (%s)", if (is.na(pass)) "SKIP" else if (isTRUE(pass)) "PASS" else if (blocking) "FAIL" else "MISS",
                   check, fmt(value), threshold))
   ctx
 }
 
 # Share gates use a binomial rule: pass when the target band overlaps the 95 percent Clopper-Pearson interval
 # around the observed share, with n the number of households.
-share_gate <- function(ctx, check, k, n, band, absolute = FALSE) {
+share_gate <- function(ctx, check, k, n, band, absolute = FALSE, blocking = TRUE) {
   ci <- if (n > 0) binom.test(k, n)$conf.int else c(0, 1)
   pass <- ci[2] >= band[1] && ci[1] <= band[2]
   gate(ctx, check, pass, c(k / n, ci[1], ci[2]),
-       sprintf("band [%s, %s] overlaps 95%% binomial interval (n = %d)", band[1], band[2], n), absolute)
+       sprintf("band [%s, %s] overlaps 95%% binomial interval (n = %d)", band[1], band[2], n), absolute, blocking)
 }
 
 in_band <- function(x, band) x >= band[1] & x <= band[2]
@@ -224,7 +226,7 @@ finish_stage <- function(ctx) {
   old <- if (file.exists(mf)) fread(mf) else NULL
   if (!is.null(old)) old <- old[stage != ctx$stage]
   fwrite(rbind(old, run), mf)
-  nfail <- sum(ctx$gates$pass %in% FALSE)
+  nfail <- sum(ctx$gates$pass %in% FALSE & ctx$gates$blocking %in% TRUE)
   message(sprintf("[%s] done in %.1fs, peak memory %.0f MB, %d gate failure(s)", ctx$stage, run$seconds, run$peak_mem_mb, nfail))
   if (nfail > 0 && !isTRUE(ctx$opt$force)) quit(status = 2)
   invisible(ctx)
