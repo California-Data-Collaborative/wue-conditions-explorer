@@ -466,7 +466,7 @@ observed_locations <- function(customers, min_count) {
 # Billing frequency and cycle inferred from the observed read dates: a bimonthly location whose periods start in odd
 # months is on cycle A, even months cycle B.
 observed_cycles <- function(usage) {
-  u <- usage[, .(days = median(as.integer(usage_end_date - usage_start_date) + 1L),
+  u <- usage[, .(days = as.numeric(median(as.integer(usage_end_date - usage_start_date) + 1L)),
                  odd = mean(as.integer(format(usage_start_date + 15L, "%m")) %% 2 == 1)), by = .(location_id = location_id_from_utility)]
   u[, billing := fifelse(days > 45, "bimonthly", "monthly")]
   u[, billing_cycle := fifelse(billing == "monthly", "M", fifelse(odd >= 0.5, "A", "B"))]
