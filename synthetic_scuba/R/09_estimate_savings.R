@@ -267,12 +267,22 @@ write_table(es_tab[order(event_bin)], file.path(est_dir, "event_study.csv"))
 pretrend <- rbindlist(lapply(sort(unique(st$utility_name)), function(r) {
   f <- tryCatch(feols(y ~ i(event_bin, treated, ref = -1) | unit_block + period_block, data = st[utility_name == r],
                       weights = ~w, cluster = ~block), error = function(e) NULL)
-  if (is.null(f)) return(data.table(utility_name = r, n_blocks = st[utility_name == r, uniqueN(block)], wald_stat = NA_real_, df = NA_integer_, pval = NA_real_))
+  if (is.null(f)) return(data.table(utility_name = r, n_blocks = st[utility_name == r, uniqueN(block)], wald_stat = NA_real_, df = NA_integer_,
+                                    pval = NA_real_, wald_reliable = FALSE))
   nm <- names(coef(f)); pre <- nm[as.integer(sub(".*::(-?[0-9]+):.*", "\\1", nm)) < -1]
   b <- coef(f)[pre]; V <- vcov(f)[pre, pre, drop = FALSE]
   ws <- tryCatch(as.numeric(t(b) %*% solve(V, b)), error = function(e) NA_real_)
-  data.table(utility_name = r, n_blocks = st[utility_name == r, uniqueN(block)], wald_stat = ws, df = length(pre),
-             pval = pchisq(ws, length(pre), lower.tail = FALSE))
+  nb <- st[utility_name == r, uniqueN(block)]
+  # A single-degree-of-freedom linear pre-trend test (treated-by-event-time slope in the pre-period) stays well
+  # conditioned with few blocks, unlike the joint Wald test, which needs many more clusters than coefficients.
+  pre_d <- st[utility_name == r & post == 0L][, trend_t := treated * event_bin]
+  fl <- tryCatch(feols(y ~ trend_t | unit_block + period_block, data = pre_d, weights = ~w, cluster = ~block), error = function(e) NULL)
+  data.table(utility_name = r, n_blocks = nb,
+             linear_slope_gal_per_sqft_yr_per_bin = if (is.null(fl)) NA_real_ else -coef(fl)[["trend_t"]] * 12 * G,
+             linear_slope_se = if (is.null(fl)) NA_real_ else se(fl)[["trend_t"]] * 12 * G,
+             linear_pval = if (is.null(fl)) NA_real_ else pvalue(fl)[["trend_t"]],
+             wald_stat = ws, df = length(pre), pval = pchisq(ws, length(pre), lower.tail = FALSE),
+             wald_reliable = nb >= 5 * length(pre))
 }))
 write_table(pretrend, file.path(est_dir, "pretrend_tests.csv"), "utility_name")
 

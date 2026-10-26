@@ -92,7 +92,9 @@ cand[is.na(pre_months), `:=`(pre_months = 0, post_months = 0)]
 onfile <- merge(locs[cust_class == "SF", .(location_id, code, irr_area_true)],
                 plan$locations[, .(location_id, default_area, default_area_value, missing_area)], by = "location_id")
 onfile[, area_on_file := fifelse(default_area, default_area_value, irr_area_true)]
-bunch <- onfile[missing_area == FALSE, .N, by = .(code, area_on_file)][N >= pv(ctx, "observation", "bunching_min_count")]
+nsf <- locs[cust_class == "SF", .(n_sf = .N), by = code]
+bunch <- merge(onfile[missing_area == FALSE, .N, by = .(code, area_on_file)], nsf, by = "code")[
+  N >= bunch_threshold(n_sf, pv(ctx, "observation", "bunching_min_count"))]
 onfile[, area_bunched := FALSE]
 onfile[bunch, on = .(code, area_on_file), area_bunched := missing_area == FALSE]
 cand <- merge(cand, plan$locations[, .(location_id, default_area, missing_area, duplicate_turf)], by = "location_id")

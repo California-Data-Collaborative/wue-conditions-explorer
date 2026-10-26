@@ -31,7 +31,8 @@ planted_over_windows <- function(out_dir, win) {
 
 metrics <- function(d) {
   d <- d[is.finite(estimate) & is.finite(planted)]
-  if (nrow(d) < 3) return(data.table(n = nrow(d)))
+  if (nrow(d) < 3) return(data.table(n = nrow(d), mean_estimate = NA_real_, mean_planted = NA_real_, bias = NA_real_, rmse = NA_real_,
+                                      mae = NA_real_, coverage90 = NA_real_, spearman = NA_real_, slope = NA_real_))
   cover <- if ("lo90" %in% names(d)) mean(d$planted >= d$lo90 & d$planted <= d$hi90, na.rm = TRUE) else NA_real_
   data.table(n = nrow(d), mean_estimate = mean(d$estimate), mean_planted = mean(d$planted), bias = mean(d$estimate - d$planted),
              rmse = sqrt(mean((d$estimate - d$planted)^2)), mae = mean(abs(d$estimate - d$planted)),

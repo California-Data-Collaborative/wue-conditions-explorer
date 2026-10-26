@@ -113,7 +113,62 @@ household DiD regresses the treated-minus-control difference on a harmonic pair 
 errors over the first 12 post-months. A stacked DiD in `fixest`, `metafor` pooling, a meta-regression, an event study,
 a placebo test, comparison estimators and the other rebate types complete the analysis.
 
-RESULTS_SECTION
+## Results on the default profile (frozen calibration)
+
+The full report is `reports/validation.html`. All numbers below are for the default profile and root seed, with the
+first 12 post-months as the headline window, and they describe the simulated world only.
+
+**Generation.** Every blocking gate in stages 1 to 6 passes, and every one also passes in at least 15 of 20 seeds (39
+of the 40 stage 1 to 4 gates pass in all 20). The analysis filters leave exactly 175 treated households, every bill
+recomputes to the cent from the published OWRS files, supplier and billed totals reconcile within 0.03 percent, and a
+run on one core and a run on four cores produce byte-identical files (70 of 70 in `data/`, `truth/` and `estimates/`).
+
+**Anchor calibration.** The bounded calibration used 11 of its 12 runs on the large profile and froze a planted target
+mean of 18.5 gal/sqft/yr, a skew scale of 0.5 and an extreme-saver share of 0.6 percent (`reports/calibration_log.csv`).
+The mean knob reached the floor of its allowed band in the second run, so three mean-phase runs repeated the same
+value, and the extreme-saver knob barely moved the loss. The planted distribution that results has a mean of 18.5, a
+median of 17.7 and an interquartile range of 10 to 26, which is tighter than the paper's estimated distribution, as the
+indirect-inference logic expects.
+
+**Planted versus estimated.** Matched DiD recovers the planted mean well, with a bias of -1.7 gal/sqft/yr (the gate is
+below 3), and pooled estimates are close to the planted mean of 18.2 over the same windows (stacked `fixest` DiD 17.4,
+standard error 7.0; `metafor` pooled 15.8, standard error 5.0). Individual household estimates are very noisy. The
+placebo households, which received fake rebate dates, have a standard deviation of 81 gal/sqft/yr and an interquartile
+range of 49, and the estimated standard deviation (94) is close to the square root of the planted variance plus the
+placebo variance (82). The rank correlation between estimated and planted household savings is only 0.26, and the
+nominal 90 percent Newey-West intervals cover the planted effect for only 42 percent of households, so the household
+standard errors understate the true error by roughly half.
+
+**Estimated-side anchors.** The estimated median (19.1 in the main run, 20 of 20 held-out seeds in band) and the
+placebo centering pass. The estimated annual mean lands in the 20 to 25 band in only 4 of 20 held-out seeds (16.5 in the
+main run), and the quartiles, tail shares and July to September mean miss the paper's bands in most or all seeds: the
+25th percentile is about -13 against a band of 4 to 12, the 75th about 47 against 26 to 40, and about 35 percent of
+households come out at or below zero. These misses follow from the noise floor, which on its own is wider than the
+paper's whole estimated interquartile range, so no setting of the three calibration knobs can reach them. They are
+documented here and in the report, not tuned away.
+
+**Comparison estimators.** Naive pre-post is biased upward by about 30 gal/sqft/yr because it attributes the drought
+drop to the rebate. The log-outcome DiD is biased by about +11, showing how the multiplicative drought effect interacts
+with a level-based conversion. Unmatched DiD with every eligible control in the zip code has a bias of +1.1 and better
+coverage (0.50), and dropping controls that hold other rebates changes little (bias -1.1).
+
+**Seasonal profile and meta-regression.** The estimated seasonal profile is flatter than the planted one (peak 1.8
+against 2.15 gal/sqft/month, winter slightly higher), and the estimated July to September to January to March ratio is
+about 1.3 against the paper's 1.8. The meta-regression recovers 3 of the 5 planted signs (efficiency, area ratio and
+income). The linear pre-trend test finds no significant pre-trend in any retailer (p-values 0.28 to 0.90); the joint
+Wald tests are flagged unreliable because the retailers have too few blocks for their number of event-time bins.
+
+**Other rebate types.** The clothes washer estimate is 15.6 gallons per household per day (planted 15, 90 percent
+interval -31 to 62, 48 households), and its seasonal profile is flat at the 5 percent level (p = 0.09). The irrigation
+controller estimate is 13.7 percent of estimated outdoor demand (planted 10 percent, interval 2.6 to 24.8 percent, 45
+households), with a significant summer peak. Both intervals cover the planted effects and are as wide as expected.
+
+**Scenarios.** With the estimator fixed, matched DiD keeps its mean bias between -1.7 and -0.2 gal/sqft/yr when the
+planted savings are concentrated, uniform or decaying (within the 12-month window) and when household noise is scaled by
+0.67 or 1.5; the noise changes the RMSE (81 to 125) but not the coverage, which stays near 0.4. Differential trends,
+where conservation-minded households trend downward faster without a rebate, raise the bias to +7.8. Parallel trends
+is therefore the assumption the method leans on most, and matching on pre-period correlation does not protect against
+its violation.
 
 ## Judgment calls
 
@@ -150,4 +205,21 @@ The paper on Project Euclid and the CIMIS websites were blocked from this enviro
 ET0 tables come from the instructions and could not be rechecked. The Dockerfile has not been built or tested,
 because the Docker daemon is not available here.
 
-LIMITATIONS_SECTION
+## Limitations
+
+- The household noise in the generator (an AR(1) deviation with innovation 0.15 on the log scale, a slow local level,
+  turnover and vacancy) makes household-level DiD estimates far noisier than the paper's estimated distribution
+  suggests. Either the generator is noisier than the paper's real households, or the paper's BSTS estimates were
+  smoothed by its spike-and-slab and local-level priors or used longer post-periods. The household noise scales are
+  assumed and outside the agreed calibration knobs, so this question is left for review.
+- The Newey-West household intervals undercover badly (42 percent for nominal 90 percent). Placebo-calibrated
+  intervals, which use the placebo spread as the noise floor, would be a natural fix but have not been implemented.
+- The three-knob calibration cannot reach the paper's estimated spread or seasonal ratio, and the estimated mean is a
+  noisy statistic (its standard error is about 3.6 gal/sqft/yr on the large profile), so the mean phase steered on
+  noise. The frozen planted mean sits at the floor of its allowed band.
+- The 3,000-account build yields 175 treated households rather than the paper's 545, so household-level summaries are
+  noisy; the large profile reaches 545.
+- The `--refit`, `--sbc` and `--causal` checks are implemented but did not run in this build (see
+  `reports/flagged_checks.csv`). The SBC model omits the AR(1) term to keep 100 refits within budget.
+- All climate, demographic, rate and behavioral values are assumed or taken from the instructions, the paper and CIMIS
+  could not be consulted from this environment, and the Dockerfile has not been built.

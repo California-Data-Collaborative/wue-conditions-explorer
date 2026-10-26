@@ -87,6 +87,7 @@ acs <- bgs[, .(block_group_id, utility_name = name, pop_density_acs_2015, total_
                median_hh_income, median_year_structure_built, is_synthetic = TRUE)]
 write_table(acs, file.path(ctx$paths$data, "acs_block_groups.csv"), "block_group_id")
 write_table(read_table(wpath(ctx, "supplier_report.csv")), file.path(ctx$paths$data, "supplier_report.csv"), c("utility_id", "report_month"))
+file.copy(wpath(ctx, "generator_params.json"), file.path(ctx$paths$truth, "generator_parameters.json"), overwrite = TRUE)
 cl <- merge(clim, ret[, .(code, name)], by = "code")[, .(utility_name = name, et_zone_from_utility = paste0("SYN-ET-", code),
   year, month, usage_et_amount, usage_et_amount_default, cimis_eto_in = eto_in, precip_in, is_synthetic = TRUE)]
 write_table(cl, file.path(ctx$paths$data, "climate_et_precip.csv"), c("utility_name", "year", "month"))

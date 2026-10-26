@@ -453,13 +453,18 @@ draw_property <- function(ctx, L, B, R, new_construction_year = NA_integer_) {
 # Analysis cohort from the observed tables only (shared by 08_observation and 09_estimate_savings)
 # ---------------------------------------------------------------------------------------------
 
+# Bunching threshold for defaulted areas: max(min, share * single family locations in the retailer).
+bunch_threshold <- function(n_sf, rule) pmax(rule$min, ceiling(rule$share * n_sf))
+
 # Location-level view of the observed customer table, with defaulted irrigable areas detected by bunching:
-# an area value shared by at least `min_count` single family locations in a retailer is treated as a default.
-observed_locations <- function(customers, min_count) {
+# an area value shared by at least the bunching threshold of single family locations in a retailer is a default.
+observed_locations <- function(customers, rule) {
   loc <- customers[, .(utility_name = utility_name[1], cust_loc_class = cust_loc_class[1], cust_loc_zip = cust_loc_zip[1],
                        irr_area = cust_loc_irr_area_sf[!is.na(cust_loc_irr_area_sf)][1]),
                    by = .(location_id = location_id_from_utility)]
-  bunch <- loc[cust_loc_class == "single family residential" & !is.na(irr_area), .N, by = .(utility_name, irr_area)][N >= min_count]
+  nsf <- loc[cust_loc_class == "single family residential", .(n_sf = .N), by = utility_name]
+  bunch <- loc[cust_loc_class == "single family residential" & !is.na(irr_area), .N, by = .(utility_name, irr_area)]
+  bunch <- merge(bunch, nsf, by = "utility_name")[N >= bunch_threshold(n_sf, rule)]
   loc[, defaulted_area := FALSE]
   loc[bunch, on = .(utility_name, irr_area), defaulted_area := TRUE]
   loc[]
@@ -478,8 +483,8 @@ observed_cycles <- function(usage) {
 # Turf (or other) rebate events with the analysis filters: at least `pre` months before the received date, at least
 # `post` months starting on or after the post-inspection date, a single rebate record of that type, a single family
 # location and a non-defaulted irrigable area.
-analysis_cohort <- function(usage, customers, rebates, type = "turf", pre = 24, post = 12, min_count = 10) {
-  loc <- observed_locations(customers, min_count)
+analysis_cohort <- function(usage, customers, rebates, type = "turf", pre = 24, post = 12, rule = list(min = 5, share = 0.02)) {
+  loc <- observed_locations(customers, rule)
   rb <- rebates[rebate_instance_type == type, .(n_records = .N, received_date = min(rebate_instance_received_date),
                                                 post_date = min(rebate_instance_post_date),
                                                 quantity = rebate_instance_quantity[1]),
